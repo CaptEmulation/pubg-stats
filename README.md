@@ -15,15 +15,18 @@ This program saves data to a local MongoDB instance which needs to be running in
 
 Requires a PUBG API key set as the `PUBG_API_KEY` env variable. You can acquire one here: https://developer.pubg.com
 
+Shard can be set with `PUBG_SHARD`. The available shards are listed here: https://documentation.pubg.com/en/making-requests.html#platforms-and-regions
+
 ```
 npm i
-PUBG_API_KEY=mypubngapikey npm start
+PUBG_API_KEY=mypubngapikey PUBG_SHARD=steam-na npm start
 ```
 
 Additionally, an `.env` file can be created at the root folder with the key defined:
 
 ```
 PUBG_API_KEY=mypubngapikey
+PUBG_SHARD=steam-na
 ```
 
 and then the app can be run with just `npm start`

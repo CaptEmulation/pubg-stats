@@ -220,6 +220,7 @@ $(async (db, sampleAny, matchApi) => {
         const totalMatches = Object.keys(REGIONS).reduce((memo, region) => {
           return pcStats[region].stats.total + memo
         }, 0)
+        process.stdout.write('\x1b[2J')
         process.stdout.write('\x1b[0f')
         writeLine(
           Object.keys(REGIONS)
@@ -262,12 +263,12 @@ $(async (db, sampleAny, matchApi) => {
     }
   }
 
-  const previousData = await db
-    .collection('match')
-    .find()
-    .toArray()
-  for (let matchAttr of previousData) {
+  let count = 0
+  const previousDataCursor = await db.collection('match').find()
+  while (await previousDataCursor.hasNext()) {
+    const matchAttr = await previousDataCursor.next()
     if (!parsedMatches.has(matchAttr.data.id)) {
+      count++
       updateStats(matchAttr)
       parsedMatches.set(matchAttr.data.id, true)
     }
@@ -289,29 +290,21 @@ $(async (db, sampleAny, matchApi) => {
           },
         },
       } = response
-      const existingMatches = await db
+      const existingMatcheIds = (await db
         .collection('match')
         .find(
           {
             'data.id': { $in: matches.map(m => m.id) },
           },
-          { 'data.id': true, 'data.attributes': true, region: true },
+          { 'data.id': true },
         )
-        .toArray()
+        .toArray()).map(({ data: { id } }) => id)
 
-      const duplicateIds = existingMatches
-        .map(({ id }) => id)
-        .reduce((memo, id) => {
-          memo[id] = true
-          return memo
-        }, {})
+      const duplicateIds = existingMatcheIds.reduce((memo, id) => {
+        memo[id] = true
+        return memo
+      }, {})
 
-      for (let matchAttr of existingMatches) {
-        if (!parsedMatches.has(matchAttr.data.id)) {
-          updateStats(matchAttr)
-          parsedMatches.set(matchAttr.data.id, true)
-        }
-      }
       let index = 0
       const loadMatches = matches
         .map(({ id }) => id)
@@ -330,8 +323,10 @@ $(async (db, sampleAny, matchApi) => {
                     url: assetRef.attributes.URL,
                     matchId: loadMatches[i],
                   })
+                } else {
+                  parsedMatches.set(data.data.id, true)
                 }
-                parsedMatches.set(data.data.id, true)
+
                 return data
               })
               .catch(e => console.error(e)),
@@ -347,14 +342,19 @@ $(async (db, sampleAny, matchApi) => {
               if (matchRef) {
                 const regionMatches = matchRef.MatchId.match(matcherPcRegion)
                 if (regionMatches && regionMatches[1]) {
+                  const foundMatch = fetchMatches.find(
+                    m => m.data && m.data.id === matchId,
+                  )
                   const fullData = Object.assign(
                     {
                       region: regionMatches[1],
                     },
-                    fetchMatches.find(m => m.data.id === matchId),
+                    foundMatch,
                   )
                   updateStats(fullData)
                   return fullData
+                } else {
+                  parsedMatches.set(matchId, true)
                 }
               }
             })
@@ -378,8 +378,20 @@ $(async (db, sampleAny, matchApi) => {
         setTimeout(loop)
       } else if (resetTime) {
         const waitTime = resetTime * 1000 - Date.now() + 1000
-        console.log(`\nWaiting for ${Math.floor(waitTime / 1000)}s`)
-        setTimeout(loop, waitTime)
+        let decTime = Math.floor(waitTime / 1000)
+        console.log('\n')
+        writeLine(`Waiting for ${decTime}s`)
+        const id = setInterval(() => {
+          if (decTime > 0) {
+            writeLine(`Waiting for ${--decTime}s`)
+          } else {
+            clearInterval(id)
+          }
+        }, 1000)
+        setTimeout(() => {
+          clearInterval(id)
+          loop()
+        }, waitTime)
       }
     } else {
       setTimeout(loop, 10000)
